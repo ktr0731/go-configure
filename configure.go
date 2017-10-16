@@ -1,6 +1,9 @@
 package configure
 
 import (
+	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -10,13 +13,27 @@ import (
 	homedir "github.com/minio/go-homedir"
 )
 
+type NotationType int8
+
+const (
+	NotationTypeJSON NotationType = iota
+	NotationTypeTOML
+)
+
 type Configure struct {
-	path         string
-	userConfig   *interface{}
-	syncRealTime bool
+	path       string
+	userConfig *interface{}
+
+	opt *Option
 }
 
-func NewConfigure(fpath string, config interface{}, syncRealTime bool) (*Configure, error) {
+type Option struct {
+	NotationType NotationType
+	SyncRealTime bool
+	EnvVarPrefix string
+}
+
+func NewConfigure(fpath string, config interface{}, opt *Option) (*Configure, error) {
 	var abs string
 	if strings.HasPrefix(fpath, "~/") {
 		home, err := homedir.Dir()
@@ -32,11 +49,20 @@ func NewConfigure(fpath string, config interface{}, syncRealTime bool) (*Configu
 		}
 	}
 
+	if config == nil {
+		var m *Option
+		config = &m
+	}
+
 	return &Configure{
-		path:         abs,
-		userConfig:   &config,
-		syncRealTime: syncRealTime,
+		path:       abs,
+		userConfig: &config,
+		opt:        opt,
 	}, nil
+}
+
+func (c *Configure) Get() interface{} {
+	return *c.userConfig
 }
 
 func (c *Configure) Init() error {
@@ -46,7 +72,7 @@ func (c *Configure) Init() error {
 	}
 	defer f.Close()
 
-	err = toml.NewEncoder(f).Encode(c.userConfig)
+	err = encode(f, c.userConfig, c.opt.NotationType)
 	if err != nil {
 		return err
 	}
@@ -60,8 +86,7 @@ func (c *Configure) Load() error {
 	}
 	defer f.Close()
 
-	_, err = toml.DecodeReader(f, c.userConfig)
-	return err
+	return decode(f, c.userConfig, c.opt.NotationType)
 }
 
 func (c *Configure) Edit() error {
@@ -81,11 +106,34 @@ func (c *Configure) Edit() error {
 		return err
 	}
 
-	if c.syncRealTime {
+	if c.opt.SyncRealTime {
 		if err := c.Load(); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func encode(w io.Writer, c *interface{}, t NotationType) error {
+	switch t {
+	case NotationTypeJSON:
+		return json.NewEncoder(w).Encode(t)
+	case NotationTypeTOML:
+		return toml.NewEncoder(w).Encode(t)
+	default:
+		return fmt.Errorf("unknown notation type: %T", t)
+	}
+}
+
+func decode(r io.Reader, c *interface{}, t NotationType) error {
+	switch t {
+	case NotationTypeJSON:
+		return json.NewDecoder(r).Decode(c)
+	case NotationTypeTOML:
+		_, err := toml.DecodeReader(r, c)
+		return err
+	default:
+		return fmt.Errorf("unknown notation type: %T", t)
+	}
 }
