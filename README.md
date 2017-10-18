@@ -22,39 +22,42 @@ type Bar struct {
 type Config struct {
   Foo *Foo
   Bar *Bar
-
-  // it is used in bellow
-  configure *configure
 }
 
 var meta *configure.Configure
 
-func New() *Config {
-  return 
+func init() {
+  // (example) init config if you need it
+  conf := Config{
+    Foo: &Foo{
+      Hoge: "hoge",
+      Fuga: "fuga",
+    },
+    Bar: &Bar{
+      Piyo: "piyo",
+    },
+  }
+
+  // init go-configure
+  var err error
+  meta, err = configure.NewConfigure("~/.example.config.toml", conf, nil)
 }
 
-// I recommend define it for convenience  
-func (c *Config) Get() *Config {
-  return c.configure.Get().(*Config)
+func Get() *Config {
+  config, _ := meta.Get().(Config)
+  return &config
+}
+
+func Edit() error {
+  return meta.Edit()
 }
 ```
 
-Next, 
+Use or edit config
 ``` go
-config := Config{
-  Bar: &Bar{
-    Hoge: "hoge",
-    Fuga: "fuga",
-  },
-  Foo: &Foo{
-    Piyo: "piyo",
-  },
-}
-
-config.configure, _ = configure.NewConfigure("~/.config.toml", &config, nil)
+// Get config
+config.Get()
 
 // Edit config by editor (Edit() opens the config file by editor)
-conf.Edit()
-
-// 
+config.Edit()
 ```
