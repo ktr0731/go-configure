@@ -5,6 +5,9 @@ configure anything more effectively, easily, and speedy!
 ## Description
 `go-configure` is a library which manage config files.  
 
+## Requirements
+- [mitchellh/mapstructure](https://github.com/mitchellh/mapstructure)
+
 ## Usage
 First of all, define the structure for config.  
 ``` go
@@ -43,8 +46,10 @@ func init() {
   meta, err = configure.NewConfigure("~/.example.config.toml", conf, nil)
 }
 
+// You need to use mapstructure to convert map[string]interface{} to the defined type
 func Get() *Config {
-  config, _ := meta.Get().(Config)
+  var config Config
+  mapstructure.Decode(meta.Get(), &config)
   return &config
 }
 
