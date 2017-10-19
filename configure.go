@@ -4,12 +4,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
 	"strings"
 
-	"github.com/BurntSushi/toml"
+	yaml "gopkg.in/yaml.v2"
+
+	"github.com/ktr0731/toml"
 	homedir "github.com/mitchellh/go-homedir"
 )
 
@@ -18,13 +22,19 @@ type NotationType int8
 const (
 	NotationTypeJSON NotationType = iota
 	NotationTypeTOML
+	NotationTypeYAML
 )
 
 type Configure struct {
+	typ        reflect.Type
 	path       string
 	userConfig interface{}
 
 	opt *Option
+}
+
+func (c *Configure) UnmarshalJSON(data []byte, v interface{}) error {
+	return json.Unmarshal(data, v)
 }
 
 type Option struct {
@@ -35,6 +45,7 @@ type Option struct {
 
 func NewConfigure(fpath string, config interface{}, opt *Option) (*Configure, error) {
 	var abs string
+
 	if strings.HasPrefix(fpath, "~/") {
 		home, err := homedir.Dir()
 		if err != nil {
@@ -59,6 +70,7 @@ func NewConfigure(fpath string, config interface{}, opt *Option) (*Configure, er
 	}
 
 	conf := &Configure{
+		typ:        reflect.TypeOf(config),
 		path:       abs,
 		userConfig: config,
 		opt:        opt,
@@ -71,8 +83,8 @@ func NewConfigure(fpath string, config interface{}, opt *Option) (*Configure, er
 	return conf, nil
 }
 
-func (c *Configure) Get() interface{} {
-	return c.userConfig
+func (c *Configure) Get() map[string]interface{} {
+	return c.userConfig.(map[string]interface{})
 }
 
 func (c *Configure) Init() error {
@@ -161,6 +173,13 @@ func encode(w io.Writer, c *interface{}, t NotationType) error {
 		return json.NewEncoder(w).Encode(c)
 	case NotationTypeTOML:
 		return toml.NewEncoder(w).Encode(c)
+	case NotationTypeYAML:
+		d, err := yaml.Marshal(c)
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(d)
+		return err
 	default:
 		return fmt.Errorf("unknown notation type: %T", t)
 	}
@@ -169,9 +188,17 @@ func encode(w io.Writer, c *interface{}, t NotationType) error {
 func decode(r io.Reader, c *interface{}, t NotationType) error {
 	switch t {
 	case NotationTypeJSON:
-		return json.NewDecoder(r).Decode(c)
+		err := json.NewDecoder(r).Decode(c)
+		return err
 	case NotationTypeTOML:
 		_, err := toml.DecodeReader(r, c)
+		return err
+	case NotationTypeYAML:
+		d, err := ioutil.ReadAll(r)
+		if err != nil {
+			return err
+		}
+		err = yaml.Unmarshal(d, c)
 		return err
 	default:
 		return fmt.Errorf("unknown notation type: %T", t)
