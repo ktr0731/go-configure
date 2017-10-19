@@ -8,33 +8,27 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"reflect"
 	"strings"
 
 	yaml "gopkg.in/yaml.v2"
 
-	"github.com/ktr0731/toml"
+	"github.com/BurntSushi/toml"
 	homedir "github.com/mitchellh/go-homedir"
 )
 
 type NotationType int8
 
 const (
-	NotationTypeJSON NotationType = iota
-	NotationTypeTOML
+	NotationTypeTOML NotationType = iota
+	NotationTypeJSON
 	NotationTypeYAML
 )
 
 type Configure struct {
-	typ        reflect.Type
 	path       string
 	userConfig interface{}
 
 	opt *Option
-}
-
-func (c *Configure) UnmarshalJSON(data []byte, v interface{}) error {
-	return json.Unmarshal(data, v)
 }
 
 type Option struct {
@@ -70,7 +64,6 @@ func NewConfigure(fpath string, config interface{}, opt *Option) (*Configure, er
 	}
 
 	conf := &Configure{
-		typ:        reflect.TypeOf(config),
 		path:       abs,
 		userConfig: config,
 		opt:        opt,
@@ -169,10 +162,16 @@ func (c *Configure) getEditor() string {
 
 func encode(w io.Writer, c *interface{}, t NotationType) error {
 	switch t {
-	case NotationTypeJSON:
-		return json.NewEncoder(w).Encode(c)
 	case NotationTypeTOML:
 		return toml.NewEncoder(w).Encode(c)
+	case NotationTypeJSON:
+		// For formatting
+		d, err := json.MarshalIndent(c, "", "  ")
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(d)
+		return err
 	case NotationTypeYAML:
 		d, err := yaml.Marshal(c)
 		if err != nil {
@@ -187,11 +186,11 @@ func encode(w io.Writer, c *interface{}, t NotationType) error {
 
 func decode(r io.Reader, c *interface{}, t NotationType) error {
 	switch t {
-	case NotationTypeJSON:
-		err := json.NewDecoder(r).Decode(c)
-		return err
 	case NotationTypeTOML:
 		_, err := toml.DecodeReader(r, c)
+		return err
+	case NotationTypeJSON:
+		err := json.NewDecoder(r).Decode(c)
 		return err
 	case NotationTypeYAML:
 		d, err := ioutil.ReadAll(r)
